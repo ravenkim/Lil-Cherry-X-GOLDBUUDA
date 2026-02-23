@@ -1,18 +1,92 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Battery, Wifi, Upload, Heart, ListPlus, Shuffle } from 'lucide-react'
+import { videos } from '../data/videos'
+
+const ANGLE_THRESHOLD = 0.25 // rad - 이만큼 돌릴 때마다 한 항목 이동
+const ITEMS_PER_PAGE = 5
+
+const totalPages = Math.ceil(videos.length / ITEMS_PER_PAGE)
 
 const HomePage = () => {
-    const [selectedVideo, setSelectedVideo] = useState('BLINDING LIGHTS')
-    
-    const videos = [
-        'BLINDING LIGHTS',
-        'DO I WANNA KNOW?',
-        'INSTANT CRUSH',
-        'LEVITATING',
-        'STARBOY',
-        'NIGHTCALL',
-        'MIDNIGHT CITY'    
-    ]
+    const [selectedIndex, setSelectedIndex] = useState(0)
+    const wheelRef = useRef<HTMLDivElement>(null)
+    const lastAngleRef = useRef<number | null>(null)
+    const accumulatedRef = useRef(0)
+    const isDraggingRef = useRef(false)
+
+    const currentPage = Math.floor(selectedIndex / ITEMS_PER_PAGE)
+    const pageVideos = videos.slice(
+        currentPage * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE + ITEMS_PER_PAGE
+    )
+    const highlightIndexInPage = selectedIndex - currentPage * ITEMS_PER_PAGE
+
+    const moveSelection = useCallback((direction: 1 | -1) => {
+        setSelectedIndex((i) =>
+            Math.max(0, Math.min(videos.length - 1, i + direction))
+        )
+    }, [])
+
+    const getAngle = useCallback((clientX: number, clientY: number) => {
+        const el = wheelRef.current
+        if (!el) return 0
+        const rect = el.getBoundingClientRect()
+        const cx = rect.left + rect.width / 2
+        const cy = rect.top + rect.height / 2
+        return Math.atan2(clientY - cy, clientX - cx)
+    }, [])
+
+    const handleWheelPointerDown = useCallback((e: React.PointerEvent) => {
+        e.preventDefault()
+        if (!wheelRef.current) return
+        isDraggingRef.current = true
+        lastAngleRef.current = getAngle(e.clientX, e.clientY)
+        accumulatedRef.current = 0
+        ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    }, [getAngle])
+
+    const handleWheelPointerMove = useCallback((e: React.PointerEvent) => {
+        if (!isDraggingRef.current || lastAngleRef.current === null) return
+        const angle = getAngle(e.clientX, e.clientY)
+        let delta = angle - lastAngleRef.current
+        if (delta > Math.PI) delta -= 2 * Math.PI
+        if (delta < -Math.PI) delta += 2 * Math.PI
+        lastAngleRef.current = angle
+        accumulatedRef.current += delta
+        if (Math.abs(accumulatedRef.current) >= ANGLE_THRESHOLD) {
+            const step = accumulatedRef.current > 0 ? 1 : -1
+            moveSelection(step as 1 | -1)
+            accumulatedRef.current = 0
+        }
+    }, [getAngle, moveSelection])
+
+    const handleWheelPointerUp = useCallback((e: React.PointerEvent) => {
+        isDraggingRef.current = false
+        lastAngleRef.current = null
+        ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
+    }, [])
+
+    const scrollAccumRef = useRef(0)
+    const listAreaRef = useRef<HTMLDivElement>(null)
+    const handleListWheel = useCallback(
+        (e: WheelEvent) => {
+            e.preventDefault()
+            scrollAccumRef.current += e.deltaY
+            const threshold = 2048
+            if (Math.abs(scrollAccumRef.current) >= threshold) {
+                const direction = scrollAccumRef.current > 0 ? 1 : -1
+                moveSelection(direction as 1 | -1)
+                scrollAccumRef.current = 0
+            }
+        },
+        [moveSelection]
+    )
+    useEffect(() => {
+        const el = listAreaRef.current
+        if (!el) return
+        el.addEventListener('wheel', handleListWheel, { passive: false })
+        return () => el.removeEventListener('wheel', handleListWheel)
+    }, [handleListWheel])
 
     return (
         <div className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden">
@@ -26,25 +100,25 @@ const HomePage = () => {
                         <Wifi className="w-5 h-5 text-gray-700" />
                     </div>
 
-                    {/* 플레이리스트만 스크롤 (고정 높이 영역 안에서) */}
-                    <div className="flex-[4] min-h-0 flex flex-col mb-4">
+                    {/* 플레이리스트: 5개씩 페이지, 휠은 한 항목씩 이동·끝에서 스크롤 시 다음 페이지 */}
+                    <div ref={listAreaRef} className="flex-[4] min-h-0 flex flex-col mb-4">
                         <div className="h-full min-h-0 rounded-2xl overflow-hidden bg-blue-50 shadow-inner">
-                            <div className="h-full overflow-y-auto overflow-x-hidden p-3">
-                                <div className="space-y-0">
-                                    {videos.map((video, index) => (
+                            <div className="h-full overflow-hidden p-3 flex flex-col">
+                                <div className="space-y-0 flex-1 min-h-0">
+                                    {pageVideos.map((video, index) => (
                                         <div
-                                            key={video}
-                                            onClick={() => setSelectedVideo(video)}
-                                            className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all text-sm ${
-                                                selectedVideo === video
+                                            key={`${currentPage}-${video.title}`}
+                                            className={`px-3 py-2.5 rounded-xl transition-all text-sm select-none min-w-0 truncate ${
+                                                index === highlightIndexInPage
                                                     ? 'bg-blue-400 text-white font-bold shadow-lg'
-                                                    : 'text-gray-700 hover:bg-blue-100'
-                                            } ${index !== videos.length - 1 ? 'mb-1' : ''}`}
+                                                    : 'text-gray-700'
+                                            } ${index !== pageVideos.length - 1 ? 'mb-1' : ''}`}
                                         >
-                                            {video}
+                                            {video.title}
                                         </div>
                                     ))}
                                 </div>
+                            
                             </div>
                         </div>
                     </div>
@@ -68,12 +142,25 @@ const HomePage = () => {
                                 </button>
                             ))}
                         </div>
-                        {/* iPod 클릭 휠 - 가로·세로 동일(size)이라 완벽한 원 */}
+                        {/* iPod 클릭 휠 - 오른쪽(시계) 돌리면 아래, 반시계 돌리면 위로 이동 */}
                         <div className="flex items-center justify-center flex-shrink-0">
-                            <div className="w-56 h-56 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 shadow-[inset_0_2px_8px_rgba(255,255,255,0.8),inset_0_-2px_6px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.1)] flex items-center justify-center border border-gray-200/80">
-                                <button
-                                    className="w-[38%] aspect-square min-w-9 min-h-9 rounded-full bg-gradient-to-br from-gray-50 to-gray-100 shadow-[inset_0_1px_2px_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.06)] border border-gray-200/60 hover:bg-gray-50 active:scale-[0.98] transition-all"
-                                    aria-label="Select"
+                            <div
+                                ref={wheelRef}
+                                role="slider"
+                                aria-label="비디오 선택 휠"
+                                aria-valuenow={selectedIndex}
+                                aria-valuemin={0}
+                                aria-valuemax={videos.length - 1}
+                                tabIndex={0}
+                                onPointerDown={handleWheelPointerDown}
+                                onPointerMove={handleWheelPointerMove}
+                                onPointerUp={handleWheelPointerUp}
+                                onPointerCancel={handleWheelPointerUp}
+                                className="w-56 h-56 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 shadow-[inset_0_2px_8px_rgba(255,255,255,0.8),inset_0_-2px_6px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.1)] flex items-center justify-center border border-gray-200/80 touch-none select-none cursor-grab active:cursor-grabbing"
+                            >
+                                <span
+                                    className="w-[38%] aspect-square min-w-9 min-h-9 rounded-full bg-gradient-to-br from-gray-50 to-gray-100 shadow-[inset_0_1px_2px_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.06)] border border-gray-200/60 pointer-events-none"
+                                    aria-hidden
                                 />
                             </div>
                         </div>
