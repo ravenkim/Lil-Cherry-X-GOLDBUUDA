@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Battery, Wifi, Upload, Heart, ListPlus, Shuffle } from 'lucide-react'
+import { Battery, Wifi, ChevronsLeft, Heart, ListPlus, ChevronsRight } from 'lucide-react'
 import { videos } from '../data/videos'
 
 const ANGLE_THRESHOLD = 0.25 // rad - 이만큼 돌릴 때마다 한 항목 이동
@@ -7,12 +7,18 @@ const ITEMS_PER_PAGE = 5
 
 const totalPages = Math.ceil(videos.length / ITEMS_PER_PAGE)
 
+const MARQUEE_DURATION = 12
+const MARQUEE_RIGHT_PADDING = 12
+
 const HomePage = () => {
     const [selectedIndex, setSelectedIndex] = useState(0)
+    const [marqueeDistance, setMarqueeDistance] = useState(0)
     const wheelRef = useRef<HTMLDivElement>(null)
     const lastAngleRef = useRef<number | null>(null)
     const accumulatedRef = useRef(0)
     const isDraggingRef = useRef(false)
+    const marqueeContainerRef = useRef<HTMLDivElement>(null)
+    const marqueeInnerRef = useRef<HTMLSpanElement>(null)
 
     const currentPage = Math.floor(selectedIndex / ITEMS_PER_PAGE)
     const pageVideos = videos.slice(
@@ -88,7 +94,27 @@ const HomePage = () => {
         return () => el.removeEventListener('wheel', handleListWheel)
     }, [handleListWheel])
 
+    useEffect(() => {
+        if (marqueeContainerRef.current && marqueeInnerRef.current) {
+            const containerWidth = marqueeContainerRef.current.offsetWidth - MARQUEE_RIGHT_PADDING
+            const textWidth = marqueeInnerRef.current.scrollWidth
+            const overflow = textWidth - containerWidth
+            setMarqueeDistance(overflow > 0 ? overflow : 0)
+        } else {
+            setMarqueeDistance(0)
+        }
+    }, [selectedIndex, currentPage, pageVideos])
+
     return (
+        <>
+            <style>{`
+                @keyframes title-marquee {
+                    0%, 8% { transform: translateX(0); }
+                    42% { transform: translateX(var(--marquee-delta, 0)); }
+                    58% { transform: translateX(var(--marquee-delta, 0)); }
+                    92%, 100% { transform: translateX(0); }
+                }
+            `}</style>
         <div className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden">
             {/* 모바일 프레임: 375:667 비율 고정, 뷰포트에 맞게 fit → 남는 영역은 배경(검정) */}
             <div className="aspect-[375/667] w-[min(100vw,calc(100dvh*375/667))] max-h-[100dvh] bg-white rounded-[3rem] shadow-2xl flex flex-col overflow-hidden">
@@ -108,13 +134,35 @@ const HomePage = () => {
                                     {pageVideos.map((video, index) => (
                                         <div
                                             key={`${currentPage}-${video.title}`}
-                                            className={`px-3 py-2.5 rounded-xl transition-all text-sm select-none min-w-0 truncate ${
+                                            className={`px-3 py-2.5 rounded-xl transition-all text-sm select-none min-w-0 ${
                                                 index === highlightIndexInPage
                                                     ? 'bg-blue-400 text-white font-bold shadow-lg'
                                                     : 'text-gray-700'
                                             } ${index !== pageVideos.length - 1 ? 'mb-1' : ''}`}
                                         >
-                                            {video.title}
+                                            {index === highlightIndexInPage ? (
+                                                <div
+                                                    ref={marqueeContainerRef}
+                                                    className="overflow-hidden w-full pr-3"
+                                                >
+                                                    <span
+                                                        ref={marqueeInnerRef}
+                                                        className="inline-block whitespace-nowrap"
+                                                        style={
+                                                            marqueeDistance > 0
+                                                                ? {
+                                                                      animation: `title-marquee ${MARQUEE_DURATION}s ease-in-out infinite`,
+                                                                      ['--marquee-delta' as string]: `-${marqueeDistance}px`,
+                                                                  }
+                                                                : undefined
+                                                        }
+                                                    >
+                                                        {video.title}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span className="block truncate">{video.title}</span>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -128,10 +176,10 @@ const HomePage = () => {
                         {/* 휠 주변 4버튼 (iPod 스타일) */}
                         <div className="flex items-center justify-between w-full flex-shrink-0">
                             {[
-                                { icon: Upload, label: 'Share' },
+                                { icon: ChevronsLeft, label: '이전' },
                                 { icon: Heart, label: 'Like' },
                                 { icon: ListPlus, label: 'Add to Playlist' },
-                                { icon: Shuffle, label: 'Shuffle' },
+                                { icon: ChevronsRight, label: '다음' },
                             ].map(({ icon: Icon, label }) => (
                                 <button
                                     key={label}
@@ -173,6 +221,7 @@ const HomePage = () => {
                 </div>
             </div>
         </div>
+        </>
     )
 }
 
