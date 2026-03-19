@@ -1,5 +1,5 @@
 export const videos = [
-  { title: "Lil Cherry - Motorola (feat. GOLDBUUDA) [Official Video]", duration: "", url: "" },
+  { title: "Lil Cherry - Motorola (feat. GOLDBUUDA) [Official Video]", duration: "", url: "https://drive.google.com/file/d/12hFe5RFtzJ5Ap5DsuOdfg0Qa4hSf5W3d/view?usp=sharing" },
   { title: "Lil Cherry - Mona Lisa (feat. GOLDBUUDA) [Official Video]", duration: "", url: "" },
   { title: "GOLDBUUDA & Lil Cherry - ALL-YOU-CAN-EAT (Official Music Video)", duration: "", url: "" },
   { title: "Lil Cherry & GOLDBUUDA - get a whiff of dis (Official Video)", duration: "", url: "" },

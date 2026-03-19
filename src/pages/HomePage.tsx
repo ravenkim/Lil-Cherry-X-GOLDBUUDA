@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Battery, Wifi, ChevronsLeft, Heart, ListPlus, ChevronsRight } from 'lucide-react'
+import { Battery, Wifi, ChevronsLeft, Heart, ArrowLeft, ChevronsRight } from 'lucide-react'
 import { videos } from '../data/videos'
 
 const ANGLE_THRESHOLD = 0.25 // rad - 이만큼 돌릴 때마다 한 항목 이동
@@ -10,8 +10,17 @@ const totalPages = Math.ceil(videos.length / ITEMS_PER_PAGE)
 const MARQUEE_DURATION = 12
 const MARQUEE_RIGHT_PADDING = 12
 
+/** Google Drive view URL → embed용 preview URL */
+function toEmbedUrl(url: string): string {
+    if (!url) return ''
+    const match = url.match(/drive\.google\.com\/file\/d\/([^/]+)/)
+    if (match) return `https://drive.google.com/file/d/${match[1]}/preview`
+    return url
+}
+
 const HomePage = () => {
     const [selectedIndex, setSelectedIndex] = useState(0)
+    const [playingUrl, setPlayingUrl] = useState<string | null>(null)
     const [marqueeDistance, setMarqueeDistance] = useState(0)
     const wheelRef = useRef<HTMLDivElement>(null)
     const lastAngleRef = useRef<number | null>(null)
@@ -126,12 +135,23 @@ const HomePage = () => {
                         <Wifi className="w-5 h-5 text-gray-700" />
                     </div>
 
-                    {/* 플레이리스트: 5개씩 페이지, 휠은 한 항목씩 이동·끝에서 스크롤 시 다음 페이지 */}
-                    <div ref={listAreaRef} className="flex-[4] min-h-0 flex flex-col mb-4">
-                        <div className="h-full min-h-0 rounded-2xl overflow-hidden bg-blue-50 shadow-inner">
-                            <div className="h-full overflow-hidden p-3 flex flex-col">
-                                <div className="space-y-0 flex-1 min-h-0">
-                                    {pageVideos.map((video, index) => (
+                    {/* 리스트 ↔ 재생 화면: 같은 영역에서 전환 */}
+                    <div ref={listAreaRef} className="flex-[4] min-h-0 flex flex-col mb-4 relative">
+                        {playingUrl ? (
+                            <div className="h-full min-h-0 rounded-2xl overflow-hidden bg-black flex flex-col">
+                                <iframe
+                                    src={toEmbedUrl(playingUrl)}
+                                    title="재생 중인 영상"
+                                    className="w-full flex-1 min-h-0 rounded-2xl"
+                                    allow="autoplay; fullscreen"
+                                    allowFullScreen
+                                />
+                            </div>
+                        ) : (
+                            <div className="h-full min-h-0 rounded-2xl overflow-hidden bg-blue-50 shadow-inner">
+                                <div className="h-full overflow-hidden p-3 flex flex-col">
+                                    <div className="space-y-0 flex-1 min-h-0">
+                                        {pageVideos.map((video, index) => (
                                         <div
                                             key={`${currentPage}-${video.title}`}
                                             className={`px-3 py-2.5 rounded-xl transition-all text-sm select-none min-w-0 ${
@@ -169,6 +189,7 @@ const HomePage = () => {
                             
                             </div>
                         </div>
+                        )}
                     </div>
 
                     {/* iPod 휠 영역: 비디오 영역과 가로 줄 맞춤, 내부는 space-between */}
@@ -176,13 +197,15 @@ const HomePage = () => {
                         {/* 휠 주변 4버튼 (iPod 스타일) */}
                         <div className="flex items-center justify-between w-full flex-shrink-0">
                             {[
-                                { icon: ChevronsLeft, label: '이전' },
+                                { icon: ArrowLeft, label: '뒤로 가기', onClick: () => setPlayingUrl(null) },
                                 { icon: Heart, label: 'Like' },
-                                { icon: ListPlus, label: 'Add to Playlist' },
+                                { icon: ChevronsLeft, label: '이전' },
                                 { icon: ChevronsRight, label: '다음' },
-                            ].map(({ icon: Icon, label }) => (
+                            ].map(({ icon: Icon, label, onClick }) => (
                                 <button
                                     key={label}
+                                    type="button"
+                                    onClick={onClick}
                                     className="w-14 h-14 rounded-full bg-gray-100 border border-gray-200 shadow-sm hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center flex-shrink-0"
                                     aria-label={label}
                                 >
@@ -206,9 +229,15 @@ const HomePage = () => {
                                 onPointerCancel={handleWheelPointerUp}
                                 className="w-56 h-56 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 shadow-[inset_0_2px_8px_rgba(255,255,255,0.8),inset_0_-2px_6px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.1)] flex items-center justify-center border border-gray-200/80 touch-none select-none cursor-grab active:cursor-grabbing"
                             >
-                                <span
-                                    className="w-[38%] aspect-square min-w-9 min-h-9 rounded-full bg-gradient-to-br from-gray-50 to-gray-100 shadow-[inset_0_1px_2px_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.06)] border border-gray-200/60 pointer-events-none"
-                                    aria-hidden
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        const video = videos[selectedIndex]
+                                        if (video?.url) setPlayingUrl(video.url)
+                                    }}
+                                    className="w-[38%] aspect-square min-w-9 min-h-9 rounded-full bg-gradient-to-br from-gray-50 to-gray-100 shadow-[inset_0_1px_2px_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.06)] border border-gray-200/60 flex-shrink-0 hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+                                    aria-label="선택한 곡 재생"
                                 />
                             </div>
                         </div>
