@@ -10,6 +10,23 @@ const totalPages = Math.ceil(videos.length / ITEMS_PER_PAGE)
 const MARQUEE_DURATION = 12
 const MARQUEE_RIGHT_PADDING = 12
 
+const LIKED_IDS_KEY = 'home-liked-video-ids'
+
+function loadLikedIds(): Set<number> {
+    try {
+        const raw = localStorage.getItem(LIKED_IDS_KEY)
+        if (!raw) return new Set()
+        const arr = JSON.parse(raw) as number[]
+        return new Set(Array.isArray(arr) ? arr : [])
+    } catch {
+        return new Set()
+    }
+}
+
+function saveLikedIds(ids: Set<number>) {
+    localStorage.setItem(LIKED_IDS_KEY, JSON.stringify([...ids]))
+}
+
 /** Google Drive view URL → embed용 preview URL */
 function toEmbedUrl(url: string): string {
     if (!url) return ''
@@ -21,7 +38,18 @@ function toEmbedUrl(url: string): string {
 const HomePage = () => {
     const [selectedIndex, setSelectedIndex] = useState(0)
     const [playingUrl, setPlayingUrl] = useState<string | null>(null)
+    const [likedIds, setLikedIds] = useState<Set<number>>(() => loadLikedIds())
     const [marqueeDistance, setMarqueeDistance] = useState(0)
+
+    const toggleLike = useCallback((id: number) => {
+        setLikedIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            saveLikedIds(next)
+            return next
+        })
+    }, [])
     const wheelRef = useRef<HTMLDivElement>(null)
     const lastAngleRef = useRef<number | null>(null)
     const accumulatedRef = useRef(0)
@@ -148,47 +176,50 @@ const HomePage = () => {
                                 />
                             </div>
                         ) : (
-                            <div className="h-full min-h-0 rounded-2xl overflow-hidden bg-blue-50 shadow-inner">
-                                <div className="h-full overflow-hidden p-3 flex flex-col">
-                                    <div className="space-y-0 flex-1 min-h-0">
-                                        {pageVideos.map((video, index) => (
-                                        <div
-                                            key={`${currentPage}-${video.title}`}
-                                            className={`px-3 py-2.5 rounded-xl transition-all text-sm select-none min-w-0 ${
-                                                index === highlightIndexInPage
-                                                    ? 'bg-blue-400 text-white font-bold shadow-lg'
-                                                    : 'text-gray-700'
-                                            } ${index !== pageVideos.length - 1 ? 'mb-1' : ''}`}
-                                        >
-                                            {index === highlightIndexInPage ? (
-                                                <div
-                                                    ref={marqueeContainerRef}
-                                                    className="overflow-hidden w-full pr-3"
-                                                >
-                                                    <span
-                                                        ref={marqueeInnerRef}
-                                                        className="inline-block whitespace-nowrap"
-                                                        style={
-                                                            marqueeDistance > 0
-                                                                ? {
-                                                                      animation: `title-marquee ${MARQUEE_DURATION}s ease-in-out infinite`,
-                                                                      ['--marquee-delta' as string]: `-${marqueeDistance}px`,
-                                                                  }
-                                                                : undefined
-                                                        }
+                            <div className="h-full min-h-0 rounded-2xl overflow-hidden bg-blue-50 shadow-inner flex flex-col">
+                                <div className="flex-1 min-h-0 overflow-hidden p-3 flex flex-col gap-1">
+                                    {Array.from({ length: ITEMS_PER_PAGE }, (_, index) => {
+                                        const video = pageVideos[index]
+                                        if (!video) {
+                                            return <div key={`${currentPage}-empty-${index}`} className="flex-1 min-h-0 rounded-xl" aria-hidden />
+                                        }
+                                        return (
+                                            <div
+                                                key={`${currentPage}-${video.title}`}
+                                                className={`flex-1 min-h-0 flex items-center px-3 rounded-xl transition-all text-sm select-none min-w-0 ${
+                                                    index === highlightIndexInPage
+                                                        ? 'bg-blue-400 text-white font-bold shadow-lg'
+                                                        : 'text-gray-700'
+                                                }`}
+                                            >
+                                                {index === highlightIndexInPage ? (
+                                                    <div
+                                                        ref={marqueeContainerRef}
+                                                        className="overflow-hidden w-full pr-3"
                                                     >
-                                                        {video.title}
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                <span className="block truncate">{video.title}</span>
-                                            )}
-                                        </div>
-                                    ))}
+                                                        <span
+                                                            ref={marqueeInnerRef}
+                                                            className="inline-block whitespace-nowrap"
+                                                            style={
+                                                                marqueeDistance > 0
+                                                                    ? {
+                                                                          animation: `title-marquee ${MARQUEE_DURATION}s ease-in-out infinite`,
+                                                                          ['--marquee-delta' as string]: `-${marqueeDistance}px`,
+                                                                      }
+                                                                    : undefined
+                                                            }
+                                                        >
+                                                            {likedIds.has(video.id) ? '♥ ' : ''}{video.title}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="block truncate">{likedIds.has(video.id) ? '♥ ' : ''}{video.title}</span>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
                                 </div>
-                            
                             </div>
-                        </div>
                         )}
                     </div>
 
@@ -198,9 +229,25 @@ const HomePage = () => {
                         <div className="flex items-center justify-between w-full flex-shrink-0">
                             {[
                                 { icon: ArrowLeft, label: '뒤로 가기', onClick: () => setPlayingUrl(null) },
-                                { icon: Heart, label: 'Like' },
-                                { icon: ChevronsLeft, label: '이전' },
-                                { icon: ChevronsRight, label: '다음' },
+                                { icon: Heart, label: 'Like', onClick: () => toggleLike(videos[selectedIndex].id) },
+                                {
+                                    icon: ChevronsLeft,
+                                    label: '이전',
+                                    onClick: () =>
+                                        playingUrl
+                                            ? moveSelection(-1)
+                                            : setSelectedIndex((i) => Math.max(0, (Math.floor(i / ITEMS_PER_PAGE) - 1) * ITEMS_PER_PAGE)),
+                                },
+                                {
+                                    icon: ChevronsRight,
+                                    label: '다음',
+                                    onClick: () =>
+                                        playingUrl
+                                            ? moveSelection(1)
+                                            : setSelectedIndex((i) =>
+                                                  Math.min(videos.length - 1, (Math.floor(i / ITEMS_PER_PAGE) + 1) * ITEMS_PER_PAGE)
+                                              ),
+                                },
                             ].map(({ icon: Icon, label, onClick }) => (
                                 <button
                                     key={label}
